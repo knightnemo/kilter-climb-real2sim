@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="103 Kilter Board climbing videos reconstructed into 4D scenes: calibrated board and holds, SMPL-X climber motion, contacts, and a Unitree G1 retarget.">
+<style>:root{box-sizing:border-box}body{margin:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Kilter Climb Real2Sim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a full-height 3D stage (the reconstructed gym wall) with a transport bar under it; a logbook column on the right with the dataset numbers, filters, the 103 climbs and the selected climb's metrics. One dark look, like a dim bouldering gym at night. */
+:root {
+  --bg: #0d1219;
+  --stage: #121925;
+  --panel: #151c28;
+  --line: #243045;
+  --fg: #e7ecf4;
+  --muted: #8d99ad;
+  --dim: #5d6a80;
+  --accent: #46dde6;          /* Kilter "middle" LED cyan */
+  --start: #3ed46f;
+  --middle: #46dde6;
+  --finish: #e352d9;
+  --foot: #ff9f2e;
+  --warn: #ffb547;
+  --bad: #ff6464;
+  --good: #59d98a;
+  --lh: #f6c453; --rh: #ff7f5e; --lf: #6cc3ff; --rf: #a58fff;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 14px; line-height: 1.45; }
+.app { height: 100%; box-sizing: border-box; padding-block: 12px; padding-inline: 16px; display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: minmax(0, 1fr); gap: 14px; }
+.stagecol { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 10px; min-width: 0; min-height: 0; }
+.stage { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; min-height: 0; }
+#gl { display: block; width: 100%; height: 100%; touch-action: none; }
+.hud { position: absolute; inset: 10px 10px auto 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; pointer-events: none; }
+.hud > * { pointer-events: auto; }
+.seg { display: inline-flex; background: rgba(13, 18, 25, .78); border: 1px solid var(--line); border-radius: 8px; padding: 3px; backdrop-filter: blur(6px); }
+.seg button { font: 500 13px/1 var(--body); color: var(--muted); background: transparent; border: 0; border-radius: 6px; padding: 7px 10px; cursor: pointer; white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--line); color: var(--fg); }
+.seg button:hover { color: var(--fg); }
+button:focus-visible, .clip:focus-visible, canvas:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pip { position: absolute; right: 10px; bottom: 10px; height: 34%; max-height: 300px; aspect-ratio: 9 / 16; max-width: 40%; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--line); background: #000; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+.pip video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.pip span { position: absolute; left: 6px; top: 5px; font: 500 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: #fff; background: rgba(0,0,0,.55); padding: 3px 5px; border-radius: 4px; }
+.legend { position: absolute; left: 10px; bottom: 10px; display: flex; flex-wrap: wrap; gap: 10px; font: 500 11px/1 var(--mono); color: var(--muted);
+  background: rgba(13, 18, 25, .72); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; max-width: calc(60% - 20px); }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; font: 600 15px var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: rgba(13,18,25,.55); text-align: center; padding: 16px; }
+.transport { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.tbtn { font: 600 13px/1 var(--body); color: var(--fg); background: var(--line); border: 0; border-radius: 7px; padding: 9px 12px; cursor: pointer; min-width: 64px; }
+#tl { width: 100%; height: 64px; display: block; cursor: pointer; }
+.tright { display: flex; gap: 8px; align-items: center; font: 500 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.side { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; padding-right: 2px; }
+.side > * { flex-shrink: 0; }
+[hidden] { display: none !important; }
+.brand h1 { font: 700 30px/1 var(--display); letter-spacing: .01em; margin: 2px 0 6px; text-wrap: balance; }
+.brand p { margin: 0 0 6px; color: var(--muted); max-width: 60ch; }
+.agg { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.agg div { background: var(--panel); padding: 9px 11px; }
+.agg b { display: block; font: 700 22px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.agg small { color: var(--muted); font-size: 12px; }
+.h2 { font: 600 12px/1 var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin: 4px 0 0; display: flex; justify-content: space-between; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.filters button { font: 500 12px/1 var(--body); color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; cursor: pointer; }
+.filters button[aria-pressed="true"] { color: var(--fg); border-color: var(--accent); }
+.filters input { flex: 1 1 140px; min-width: 0; font: 13px var(--body); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; }
+.clips { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; overflow-y: auto; max-height: 46vh; }
+.clip { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 8px 11px; background: var(--panel); border: 0; border-top: 1px solid var(--line); color: var(--fg); text-align: left; cursor: pointer; font: inherit; }
+.clip:first-child { border-top: 0; }
+.clip:hover { background: #1a2332; }
+.clip[aria-current="true"] { background: #1c2738; box-shadow: inset 3px 0 0 var(--accent); }
+.clip .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clip .gr { font: 500 12px var(--mono); color: var(--muted); }
+.clip .mt { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; font: 400 11.5px var(--mono); color: var(--muted); }
+.chip { font: 500 11px/1 var(--mono); padding: 3px 6px; border-radius: 4px; background: #202a3a; color: var(--muted); white-space: nowrap; }
+.chip.warn { background: rgba(255,181,71,.13); color: var(--warn); }
+.chip.bad { background: rgba(255,100,100,.13); color: var(--bad); }
+.chip.good { background: rgba(89,217,138,.12); color: var(--good); }
+.detail { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.detail h3 { font: 700 22px/1.05 var(--display); margin: 0; text-wrap: balance; }
+.detail .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+.detail a, .brand a { color: var(--accent); }
+.grp h4 { font: 600 11px/1 var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin: 0 0 6px; }
+dl { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; }
+dt { color: var(--muted); }
+dd { margin: 0; font: 500 13px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.seq { font: 500 12.5px/1.7 var(--mono); color: var(--fg); word-break: break-word; }
+.note { color: var(--muted); font-size: 12.5px; }
+details.how summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+details.how p { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
+@media (max-width: 900px) {
+  html, body { height: auto; }
+  .app { height: auto; grid-template-columns: minmax(0, 1fr); }
+  .stagecol { grid-template-rows: auto auto; }
+  .stage { height: 68vh; min-height: 380px; }
+  .side { overflow: visible; }
+  .clips { max-height: 60vh; }
+  .pip { height: 30%; }
+  .legend { display: none; }
+  .transport { grid-template-columns: auto minmax(0, 1fr); }
+  #tl { grid-column: 1 / -1; grid-row: 2; }
+  .tright { justify-content: flex-end; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="stagecol">
+    <div class="stage" id="stage">
+      <canvas id="gl" aria-label="3D reconstruction of the climb"></canvas>
+      <div class="hud">
+        <div class="seg" role="group" aria-label="Show">
+          <button id="m-climber" aria-pressed="true">Climber</button>
+          <button id="m-g1" aria-pressed="false">G1 robot</button>
+          <button id="m-both" aria-pressed="false">Side by side</button>
+        </div>
+        <div class="seg" role="group" aria-label="View">
+          <button id="v-video" aria-pressed="true">Source camera</button>
+          <button id="v-orbit" aria-pressed="false">Three-quarter</button>
+          <button id="v-side" aria-pressed="false">Side</button>
+        </div>
+        <div class="seg" role="group" aria-label="Options">
+          <button id="o-labels" aria-pressed="true">Hold letters</button>
+          <button id="o-pip" aria-pressed="true">Source video</button>
+        </div>
+      </div>
+      <div class="legend" aria-hidden="true">
+        <span><i style="background:var(--start)"></i>start</span>
+        <span><i style="background:var(--middle)"></i>hand</span>
+        <span><i style="background:var(--finish)"></i>finish</span>
+        <span><i style="background:var(--foot)"></i>foot</span>
+        <span>bright ring = in contact</span>
+      </div>
+      <div class="pip" id="pip"><video id="vid" muted playsinline loop preload="auto"></video><span>Source video</span></div>
+      <div class="loading" id="loading">Loading…</div>
+    </div>
+    <div class="transport">
+      <button class="tbtn" id="play">Pause</button>
+      <canvas id="tl" tabindex="0" aria-label="Timeline: click or drag to seek"></canvas>
+      <div class="tright"><span id="clock">0.0 s</span>
+        <div class="seg" role="group" aria-label="Speed"><button data-speed="0.25" aria-pressed="false">¼×</button><button data-speed="0.5" aria-pressed="false">½×</button><button data-speed="1" aria-pressed="true">1×</button></div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="side">
+    <div class="brand">
+      <h1>Kilter Climb Real2Sim</h1>
+      <p>103 short Kilter Board climbing videos from YouTube and Instagram, each reconstructed into a replayable 4D scene: the board and its holds under a calibrated camera, the climber's SMPL-X motion, hand and foot contacts, and the motion retargeted to a Unitree G1 humanoid.</p>
+      <p class="links"><a href="https://huggingface.co/datasets/knightnemo/kilter-climb-real2sim" target="_blank" rel="noopener">Dataset on Hugging Face →</a></p>
+    </div>
+    <div class="agg" id="agg"></div>
+    <div class="h2"><span>Climbs</span><span id="count"></span></div>
+    <div class="filters" id="filters">
+      <button data-q="all" aria-pressed="true">All</button>
+      <button data-q="good" aria-pressed="false">good</button>
+      <button data-q="fair" aria-pressed="false">fair</button>
+      <button data-q="low" aria-pressed="false">low</button>
+      <input id="search" type="search" placeholder="Search climb or uploader" aria-label="Search climb or uploader">
+    </div>
+    <div class="clips" id="clips"></div>
+    <div class="detail" id="detail"></div>
+    <details class="how">
+      <summary>How the scene is made</summary>
+      <p>Wall and hold colours: the median frame of the video (the climber removed) is projected back onto the wall and the holds through the calibrated camera. From the source camera the scene matches the video; from other angles, surfaces the camera never saw show the board's base colour.</p>
+      <p>Hold shapes: SAM 2 segments each hold's outline in the median frame; the outline is cast along camera rays onto the board and raised into a dome whose height grows with its footprint. The shapes are approximate; positions and sizes come from the image.</p>
+      <p>Climber: an SMPL-X body skinned in the browser. Each vertex colour is the median over video frames where the vertex faces the camera and is not occluded; the side facing the wall is filled in from neighbouring vertices.</p>
+      <p>G1: retargeted onto the same wall (scaled by the robot-to-climber size ratio), with every contact placed on its own hold; meshes from the Unitree G1 model. On this page the climber plays at up to 30 fps, the G1 at 15 fps, and the source video is a small compressed copy.</p>
+      <p>Quality tiers: good when both the human and the G1 score are ≥ 0.6, fair when both are ≥ 0.4, low otherwise. The videos belong to their original uploaders.</p>
+    </details>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+"use strict";
+const ROLE = { start: 0x3ed46f, middle: 0x46dde6, finish: 0xe352d9, foot: 0xff9f2e };
+const EFF = { left_hand: "#f6c453", right_hand: "#ff7f5e", left_foot: "#6cc3ff", right_foot: "#a58fff" };
+
+const $ = (id) => document.getElementById(id);
+const S = { clips: null, clip: null, frame: 0, playing: true, speed: 1, mode: "climber", view: "video", labels: true, pip: true, clockT: 0, q: "all", query: "" };
+
+// ---------- binary helpers ----------
+function half(u16) {
+  const out = new Float32Array(u16.length);
+  for (let i = 0; i < u16.length; i++) {
+    const h = u16[i], s = h & 0x8000 ? -1 : 1, e = (h >> 10) & 31, m = h & 1023;
+    out[i] = e === 0 ? s * 6.103515625e-5 * (m / 1024) : e === 31 ? (m ? NaN : s * Infinity) : s * Math.pow(2, e - 15) * (1 + m / 1024);
+  }
+  return out;
+}
+function arr(buf, d) {
+  const n = d.shape.reduce((a, b) => a * b, 1);
+  switch (d.dtype) {
+    case "float32": return new Float32Array(buf, d.off, n);
+    case "float16": return half(new Uint16Array(buf, d.off, n));
+    case "uint8": return new Uint8Array(buf, d.off, n);
+    case "uint16": return new Uint16Array(buf, d.off, n);
+    case "uint32": return new Uint32Array(buf, d.off, n);
+    case "int16": return new Int16Array(buf, d.off, n);
+    case "int8": return new Int8Array(buf, d.off, n);
+    default: throw new Error("dtype " + d.dtype);
+  }
+}
+const getJSON = (u) => fetch(u).then((r) => { if (!r.ok) throw new Error(u + " " + r.status); return r.json(); });
+// binaries ship as base64 text (the host serves no .bin type)
+const getBin = (u) => fetch(u + ".b64.txt").then((r) => { if (!r.ok) throw new Error(u + " " + r.status); return r.text(); }).then((t) => {
+  const s = atob(t.trim()), a = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i);
+  return a.buffer;
+});
+
+// hold domes all share one topology (scripts/export_scene4d.py --dome-template): n_lat rings of n_ring outline
+// points from the base up, then the apex; domes.flip[k] = 1 means the winding is reversed
+function domeFaces(d) {
+  const nr = d.n_ring, nl = d.n_lat, per = nl * nr + 1, tpl = [];
+  for (let j = 0; j < nl - 1; j++) for (let i = 0; i < nr; i++) {
+    const a0 = j * nr + i, a1 = j * nr + (i + 1) % nr, b0 = a0 + nr, b1 = a1 + nr;
+    tpl.push(a0, a1, b1, a0, b1, b0);
+  }
+  for (let i = 0; i < nr; i++) tpl.push((nl - 1) * nr + i, (nl - 1) * nr + (i + 1) % nr, nl * nr);
+  const out = new Uint32Array(d.n * tpl.length);
+  for (let k = 0; k < d.n; k++) {
+    const base = k * per, o = k * tpl.length, fl = d.flip[k];
+    for (let t = 0; t < tpl.length; t += 3) {
+      out[o + t] = base + tpl[t + (fl ? 2 : 0)]; out[o + t + 1] = base + tpl[t + 1]; out[o + t + 2] = base + tpl[t + (fl ? 0 : 2)];
+    }
+  }
+  return out;
+}
+
+// ---------- three.js setup ----------
+const canvas = $("gl");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x121925);
+scene.fog = new THREE.Fog(0x121925, 10, 26);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 80);
+camera.up.set(0, 0, 1);
+const controls = new THREE.OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.12;
+const hemi = new THREE.HemisphereLight(0xe8eeff, 0x40382e, 0.78);
+hemi.position.set(0, 0, 1);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 0.62);
+sun.position.set(-1.5, -6, 4.5);
+scene.add(sun);
+
+const world = new THREE.Group();           // per-clip content
+scene.add(world);
+let floor = null;
+
+const PROJ_VS = `
+varying vec3 vP; varying vec3 vN;
+void main() { vP = position; vN = normal; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const PROJ_FS = `
+uniform sampler2D map; uniform mat3 Rcv; uniform vec3 tcv; uniform float f; uniform vec2 c; uniform vec2 size;
+uniform vec3 camPos; uniform vec3 fallback; uniform vec3 lightDir; uniform float shade;
+varying vec3 vP; varying vec3 vN;
+void main() {
+  vec3 N = normalize(vN);
+  vec3 col = fallback;
+  vec3 Xc = Rcv * vP + tcv;
+  if (Xc.z > 0.05 && dot(N, camPos - vP) > 0.0) {
+    vec2 uv = f * Xc.xy / Xc.z + c;
+    vec2 st = uv / size;
+    if (st.x >= 0.0 && st.x <= 1.0 && st.y >= 0.0 && st.y <= 1.0) col = texture2D(map, vec2(st.x, 1.0 - st.y)).rgb;
+  }
+  float l = mix(1.0, 0.62 + 0.5 * max(dot(N, lightDir), 0.0), shade);
+  gl_FragColor = vec4(col * l, 1.0);
+}`;
+
+let rigShared = null, g1Shared = null;
+let human = null, robot = null, envHuman = null, envRobot = null, rings = [], data = null;
+const ROBOT_GAP = 0.55;
+
+function disposeTree(o) {
+  o.traverse((x) => {
+    if (x.geometry && !x.userData.shared) x.geometry.dispose();
+    if (x.material) {
+      const ms = Array.isArray(x.material) ? x.material : [x.material];
+      ms.forEach((m) => { if (!m.userData.shared) { if (m.map) m.map.dispose(); if (m.uniforms && m.uniforms.map) m.uniforms.map.value.dispose(); m.dispose(); } });
+    }
+  });
+}
+
+function basis(F) {         // facet frame (rows of `frame` hold the columns ex, ey, n)
+  const fr = F.frame;
+  return [new THREE.Vector3(fr[0][0], fr[1][0], fr[2][0]), new THREE.Vector3(fr[0][1], fr[1][1], fr[2][1]), new THREE.Vector3(fr[0][2], fr[1][2], fr[2][2])];
+}
+
+function letterSprite(ch, color) {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 96;
+  const g = cv.getContext("2d");
+  g.fillStyle = "rgba(10,14,20,.82)";
+  g.beginPath(); g.arc(48, 48, 40, 0, Math.PI * 2); g.fill();
+  g.lineWidth = 7; g.strokeStyle = color; g.stroke();
+  g.fillStyle = "#fff"; g.font = "700 50px Barlow Condensed, Arial Narrow, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText(ch, 48, 52);
+  const tex = new THREE.CanvasTexture(cv);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  sp.scale.set(0.085, 0.085, 1);
+  sp.renderOrder = 10;
+  return sp;
+}
+
+function buildEnv(meta, buf, tex) {
+  const env = new THREE.Group();
+  const cam = meta.camera;
+  const R = cam.R, t = cam.t;
+  const camPos = new THREE.Vector3(
+    -(R[0][0] * t[0] + R[1][0] * t[1] + R[2][0] * t[2]),
+    -(R[0][1] * t[0] + R[1][1] * t[1] + R[2][1] * t[2]),
+    -(R[0][2] * t[0] + R[1][2] * t[1] + R[2][2] * t[2]));
+  const light = new THREE.Vector3(-0.25, -0.8, 0.55).normalize();
+  const proj = (fallback, shade) => new THREE.ShaderMaterial({
+    vertexShader: PROJ_VS, fragmentShader: PROJ_FS,
+    uniforms: {
+      map: { value: tex }, Rcv: { value: new THREE.Matrix3().set(R[0][0], R[0][1], R[0][2], R[1][0], R[1][1], R[1][2], R[2][0], R[2][1], R[2][2]) },
+      tcv: { value: new THREE.Vector3(t[0], t[1], t[2]) }, f: { value: cam.f }, c: { value: new THREE.Vector2(cam.c[0], cam.c[1]) },
+      size: { value: new THREE.Vector2(cam.size[0], cam.size[1]) }, camPos: { value: camPos }, fallback: { value: new THREE.Color(fallback) },
+      lightDir: { value: light }, shade: { value: shade },
+    },
+  });
+  const wood = new THREE.MeshLambertMaterial({ color: 0x9c7c58 });
+  const front = proj(0x2c4a8c, 0.0);
+  const thick = 0.045;
+  for (const F of meta.facets) {
+    const [ex, ey, n] = basis(F);
+    const [w, h] = F.extent;
+    const g = new THREE.BoxGeometry(w, h, thick);
+    const o = new THREE.Vector3(...F.origin);
+    const ctr = o.clone().addScaledVector(ex, w / 2).addScaledVector(ey, h / 2).addScaledVector(n, -thick / 2);
+    g.applyMatrix4(new THREE.Matrix4().makeBasis(ex, ey, n).setPosition(ctr));
+    env.add(new THREE.Mesh(g, [wood, wood, wood, wood, front, wood]));   // +z of the box = the climbing face
+  }
+  // holds: domes textured by the same projection, with a little shading so their volume reads when orbiting
+  const D = meta.domes, per = D.n_lat * D.n_ring + 1;
+  const dv = arr(buf, D.verts), df = D.faces ? arr(buf, D.faces) : domeFaces(D);
+  const dg = new THREE.BufferGeometry();
+  dg.setAttribute("position", new THREE.BufferAttribute(dv, 3));
+  dg.setIndex(new THREE.BufferAttribute(df, 1));
+  dg.computeVertexNormals();
+  if (D.n > 0) env.add(new THREE.Mesh(dg, proj(0xcfc6b4, 0.55)));
+  // dome centres and radii, to place the LED rings around the holds they belong to
+  const domes = [];
+  for (let k = 0; k < D.n; k++) {
+    const b = k * per;
+    let cx = 0, cy = 0, cz = 0;
+    for (let i = 0; i < D.n_ring; i++) { cx += dv[3 * (b + i)]; cy += dv[3 * (b + i) + 1]; cz += dv[3 * (b + i) + 2]; }
+    const cc = new THREE.Vector3(cx / D.n_ring, cy / D.n_ring, cz / D.n_ring);
+    let r = 0;
+    for (let i = 0; i < D.n_ring; i++) r += cc.distanceTo(new THREE.Vector3(dv[3 * (b + i)], dv[3 * (b + i) + 1], dv[3 * (b + i) + 2]));
+    const a = b + per - 1;
+    const apex = new THREE.Vector3(dv[3 * a], dv[3 * a + 1], dv[3 * a + 2]);
+    domes.push({ c: cc, r: r / D.n_ring, h: apex.distanceTo(cc) });
+  }
+  const ringList = [];
+  for (const hd of meta.holds) {
+    if (!ROLE[hd.role]) continue;
+    const p = new THREE.Vector3(...hd.p), n = new THREE.Vector3(...hd.n);
+    let best = null, bd = 0.07;
+    for (const d of domes) { const dd = d.c.distanceTo(p); if (dd < bd) { bd = dd; best = d; } }
+    const c = best ? best.c : p, r = best ? Math.min(best.r, 0.12) : 0.045, hh = best ? best.h : 0.025;
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+    const mat = new THREE.MeshBasicMaterial({ color: ROLE[hd.role], transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r + 0.004, r + 0.02, 48), mat);
+    ring.position.copy(c).addScaledVector(n, 0.003); ring.quaternion.copy(q);
+    const glowMat = new THREE.MeshBasicMaterial({ color: ROLE[hd.role], transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+    const glow = new THREE.Mesh(new THREE.RingGeometry(r + 0.02, r + 0.075, 48), glowMat);
+    glow.position.copy(ring.position); glow.quaternion.copy(q);
+    env.add(ring, glow);
+    if (hd.letter) {
+      const sprite = letterSprite(hd.letter, "#" + ROLE[hd.role].toString(16).padStart(6, "0"));
+      sprite.position.copy(c).addScaledVector(n, hh + 0.07);
+      sprite.userData.label = true;
+      env.add(sprite);
+    }
+    ringList.push({ id: hd.id, ring, glow, mat, glowMat });
+  }
+  return { env, camPos, ringList };
+}
+
+function buildHuman(meta, buf) {
+  const h = meta.human;
+  const rest = arr(buf, h.rest), J = arr(buf, h.joints), col = arr(buf, h.color);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(rest), 3));
+  g.setAttribute("color", new THREE.BufferAttribute(new Uint8Array(col), 3, true));
+  g.setIndex(new THREE.BufferAttribute(rigShared.faces, 1));
+  g.setAttribute("skinIndex", new THREE.BufferAttribute(rigShared.skinIndex, 4));
+  g.setAttribute("skinWeight", new THREE.BufferAttribute(rigShared.skinWeight, 4));
+  g.computeVertexNormals();
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, skinning: true });
+  const mesh = new THREE.SkinnedMesh(g, mat);
+  mesh.frustumCulled = false;
+  const P = rigShared.parents, bones = [];
+  for (let i = 0; i < P.length; i++) {
+    const b = new THREE.Bone();
+    if (P[i] < 0) b.position.set(J[0], J[1], J[2]);
+    else b.position.set(J[3 * i] - J[3 * P[i]], J[3 * i + 1] - J[3 * P[i] + 1], J[3 * i + 2] - J[3 * P[i] + 2]);
+    if (P[i] >= 0) bones[P[i]].add(b);
+    bones.push(b);
+  }
+  mesh.add(bones[0]);
+  mesh.updateMatrixWorld(true);
+  mesh.bind(new THREE.Skeleton(bones));
+  return { mesh, bones, rot: arr(buf, h.rot), root: arr(buf, h.root), nj: rigShared.nBody };
+}
+
+function poseHuman(i) {
+  const H = human, nj = H.nj;
+  const r = H.rot, o = i * nj * 4;
+  for (let j = 0; j < nj; j++) H.bones[j].quaternion.set(r[o + 4 * j], r[o + 4 * j + 1], r[o + 4 * j + 2], r[o + 4 * j + 3]);
+  H.bones[0].position.set(H.root[3 * i], H.root[3 * i + 1], H.root[3 * i + 2]);
+}
+
+function buildRobot(meta, buf) {
+  const grp = new THREE.Group();
+  const parts = g1Shared.meshes.map((m) => {
+    const mesh = new THREE.Mesh(m.geometry, m.rgba[0] < 0.4 ? g1Shared.dark : g1Shared.light);
+    mesh.userData.shared = true;
+    grp.add(mesh);
+    return mesh;
+  });
+  return { grp, parts, pose: arr(buf, meta.pose), n: parts.length, meta };
+}
+
+function poseRobot(t) {     // the G1 runs at its own frame rate: index by time
+  const R = robot, p = R.pose, n = R.n;
+  const fi = Math.min(Math.floor(t * R.meta.fps), R.meta.frames - 1);
+  for (let k = 0; k < n; k++) {
+    const o = (fi * n + k) * 7;
+    R.parts[k].position.set(p[o], p[o + 1], p[o + 2]);
+    R.parts[k].quaternion.set(p[o + 3], p[o + 4], p[o + 5], p[o + 6]);
+  }
+}
+
+async function loadShared() {
+  const [rj, rb, gj, gb] = await Promise.all([getJSON("shared/human_rig.json"), getBin("shared/human_rig.bin"), getJSON("shared/g1_mesh.json"), getBin("shared/g1_mesh.bin")]);
+  const w8 = arr(rb, rj.skin_weight), w = new Float32Array(w8.length);
+  for (let i = 0; i < w8.length; i += 4) { const s = w8[i] + w8[i + 1] + w8[i + 2] + w8[i + 3] || 1; for (let k = 0; k < 4; k++) w[i + k] = w8[i + k] / s; }
+  rigShared = { faces: new Uint16Array(arr(rb, rj.faces)), skinIndex: new Uint16Array(arr(rb, rj.skin_index)), skinWeight: w, parents: rj.parents, nBody: rj.n_body_joints };
+  const light = new THREE.MeshStandardMaterial({ color: 0xc9ced6, metalness: 0.25, roughness: 0.42 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2a2e35, metalness: 0.3, roughness: 0.5 });
+  light.userData.shared = dark.userData.shared = true;
+  g1Shared = { light, dark, meshes: gj.meshes.map((m) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(arr(gb, m.verts), 3));
+    g.setIndex(new THREE.BufferAttribute(arr(gb, m.faces), 1));
+    if (m.normals) g.setAttribute("normal", new THREE.BufferAttribute(arr(gb, m.normals), 3, true));   // crease-split, int8
+    else g.computeVertexNormals();
+    return { geometry: g, rgba: m.rgba };
+  }) };
+}
+
+const texLoader = new THREE.TextureLoader();
+let loadSeq = 0;
+async function loadClip(id) {
+  const my = ++loadSeq;
+  $("loading").hidden = false; $("loading").textContent = "Loading…";
+  const c = S.clips.find((x) => x.id === id);
+  const base = "media/" + id + "/";
+  const [buf, gbuf, tex] = await Promise.all([getBin(base + "scene.bin"), getBin(base + "g1.bin"),
+    new Promise((res, rej) => texLoader.load(base + "wall.jpg", res, undefined, () => rej(new Error(base + "wall.jpg"))))]);
+  if (my !== loadSeq) { tex.dispose(); return; }
+  const meta = c.scene, gmeta = c.g1;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  // tear down the previous clip
+  for (const x of [...world.children]) { world.remove(x); disposeTree(x); }
+  const E = buildEnv(meta, buf, tex);
+  envHuman = E.env;
+  envRobot = E.env.clone();
+  rings = E.ringList;
+  human = buildHuman(meta, buf);
+  robot = buildRobot(gmeta, gbuf);
+  world.add(envHuman, envRobot, human.mesh, robot.grp);
+  if (floor) { scene.remove(floor); floor.geometry.dispose(); floor.material.map.dispose(); floor.material.dispose(); }
+  // floor: the gym floor's colour from the bottom of the frame, darkened, fading into the background
+  const fc = new THREE.Color(meta.floor_rgb[0] / 255, meta.floor_rgb[1] / 255, meta.floor_rgb[2] / 255).lerp(new THREE.Color(0x1d232c), 0.62);
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 256;
+  const g2 = cv.getContext("2d"), grad = g2.createRadialGradient(128, 128, 10, 128, 128, 128);
+  grad.addColorStop(0, "#" + fc.getHexString()); grad.addColorStop(0.55, "#" + fc.clone().lerp(scene.background, 0.35).getHexString()); grad.addColorStop(1, "#" + scene.background.getHexString());
+  g2.fillStyle = grad; g2.fillRect(0, 0, 256, 256);
+  floor = new THREE.Mesh(new THREE.CircleGeometry(12, 64), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) }));
+  floor.position.set(3.0, -1.6, -0.002);
+  scene.add(floor);
+  data = { meta, gmeta, camPos: E.camPos };
+  S.clip = c;
+  S.frame = 0; S.clockT = 0;
+  const v = $("vid");
+  v.src = base + "video.mp4";
+  v.playbackRate = S.speed;
+  if (S.playing) v.play().catch(() => {});
+  applyMode();
+  setView(S.view, true);
+  renderDetail();
+  drawTimeline();
+  $("loading").hidden = true;
+}
+
+// ---------- modes and views ----------
+function robotMatrix(offsetX) {
+  const s = robot.meta.scale, p = robot.meta.pivot;
+  return new THREE.Matrix4().makeTranslation(p[0] + offsetX, p[1], p[2]).multiply(new THREE.Matrix4().makeScale(s, s, s)).multiply(new THREE.Matrix4().makeTranslation(-p[0], -p[1], -p[2]));
+}
+function robotOffset() { return S.mode === "both" ? data.meta.facets[0].extent[0] * 1.0 + ROBOT_GAP : 0; }
+function applyMode() {
+  ["climber", "g1", "both"].forEach((m) => $("m-" + m).setAttribute("aria-pressed", String(S.mode === m)));
+  if (!data) return;
+  const both = S.mode === "both", g1 = S.mode === "g1";
+  envHuman.visible = human.mesh.visible = !g1;
+  envRobot.visible = robot.grp.visible = g1 || both;
+  envRobot.matrixAutoUpdate = false;
+  envRobot.matrix.copy(robotMatrix(robotOffset()));
+  robot.grp.position.set(robotOffset(), 0, 0);
+  world.traverse((o) => { if (o.userData.label) o.visible = S.labels; });
+}
+function boardCentre() {
+  const F = data.meta.facets[data.meta.facets.length - 1], [ex, ey] = basis(F);
+  return new THREE.Vector3(...F.origin).addScaledVector(ex, F.extent[0] / 2).addScaledVector(ey, F.extent[1] * 0.42);
+}
+function setView(v) {
+  S.view = v;
+  ["video", "orbit", "side"].forEach((k) => $("v-" + k).setAttribute("aria-pressed", String(v === k)));
+  if (!data) return;
+  const cam = data.meta.camera, R = cam.R;
+  const M = S.mode === "g1" ? robotMatrix(0) : new THREE.Matrix4();
+  let target = boardCentre().applyMatrix4(M);
+  const aspect = camera.aspect;
+  if (v === "video") {
+    const pos = data.camPos.clone().applyMatrix4(M);
+    const fwd = new THREE.Vector3(R[2][0], R[2][1], R[2][2]);
+    const d = Math.max(1.5, pos.distanceTo(target));
+    target = pos.clone().addScaledVector(fwd, d);
+    const [W, H] = cam.size;
+    const vf = 2 * Math.atan(H / 2 / cam.f), hf = 2 * Math.atan(W / 2 / cam.f);
+    camera.fov = THREE.MathUtils.radToDeg(Math.max(vf, 2 * Math.atan(Math.tan(hf / 2) / aspect)));
+    camera.position.copy(pos);
+  } else {
+    if (S.mode === "both") target = boardCentre().lerp(boardCentre().applyMatrix4(robotMatrix(robotOffset())), 0.5);
+    camera.fov = 42;
+    const span = S.mode === "both" ? 1.75 : 1;
+    const off = v === "orbit" ? new THREE.Vector3(-3.0, -5.6, 0.2) : new THREE.Vector3(6.6, -1.4, 0.3);
+    camera.position.copy(target).addScaledVector(off, span);
+  }
+  camera.updateProjectionMatrix();
+  controls.target.copy(target);
+  controls.update();
+}
+
+// ---------- timeline ----------
+const tl = $("tl");
+function drawTimeline() {
+  if (!data) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = tl.clientWidth, h = tl.clientHeight;
+  tl.width = w * dpr; tl.height = h * dpr;
+  const g = tl.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const T = data.meta.frames, x = (f) => (f / (T - 1)) * (w - 2) + 1;
+  const rows = ["left_hand", "right_hand", "left_foot", "right_foot"];
+  const top = 20, rh = 9;
+  rows.forEach((r, k) => {
+    const y = top + k * (rh + 2);
+    g.fillStyle = "#1c2534"; g.fillRect(0, y, w, rh);
+    g.fillStyle = EFF[r];
+    for (const c of data.meta.contacts) if (c.effector === r) g.fillRect(x(c.t0), y, Math.max(1.5, x(c.t1) - x(c.t0)), rh);
+  });
+  g.textAlign = "center"; g.textBaseline = "middle";
+  for (const s of data.meta.sequence) {
+    const xx = x(s.t);
+    g.fillStyle = EFF[s.effector]; g.beginPath(); g.arc(xx, 8, 7, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "#0d1219"; g.font = "700 10px Barlow Condensed, sans-serif"; g.fillText(s.letter, xx, 8.5);
+  }
+  const px = x(S.frame);
+  g.fillStyle = "#e7ecf4"; g.fillRect(px - 1, 0, 2, h);
+}
+function seekFromEvent(e) {
+  const r = tl.getBoundingClientRect();
+  const u = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  seek(Math.round(u * (data.meta.frames - 1)));
+}
+function seek(f) {
+  S.frame = f;
+  const v = $("vid");
+  S.clockT = f / data.meta.fps;
+  if (v.readyState >= 1) v.currentTime = S.clockT;
+}
+let dragging = false;
+tl.addEventListener("pointerdown", (e) => { if (!data) return; dragging = true; tl.setPointerCapture(e.pointerId); seekFromEvent(e); });
+tl.addEventListener("pointermove", (e) => { if (dragging) seekFromEvent(e); });
+tl.addEventListener("pointerup", () => { dragging = false; });
+tl.addEventListener("keydown", (e) => {
+  if (!data) return;
+  if (e.key === "ArrowRight") seek(Math.min(data.meta.frames - 1, S.frame + Math.round(data.meta.fps / 2)));
+  if (e.key === "ArrowLeft") seek(Math.max(0, S.frame - Math.round(data.meta.fps / 2)));
+});
+
+// ---------- side panel ----------
+const fmt = (x, d = 1) => (x === null || x === undefined || Number.isNaN(x) ? "—" : Number(x).toFixed(d));
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const vnum = (g) => g ? +g.split("/V")[1] : null;
+const QZH = { good: "good", fair: "fair", low: "low" };
+function qChip(c) { return `<span class="chip ${c.quality === "good" ? "good" : c.quality === "fair" ? "warn" : "bad"}">${QZH[c.quality]}</span>`; }
+function renderAgg() {
+  const C = S.clips;
+  const hrs = C.reduce((a, c) => a + c.frames / c.fps, 0) / 3600;
+  const climbs = new Set(C.map((c) => c.climb_uuid || c.id)).size;
+  const ang = C.map((c) => c.climb_angle_deg), vs = C.map((c) => vnum(c.climb_grade)).filter((x) => x != null);
+  const lit = C.reduce((a, c) => a + c.lit_holds, 0), touched = C.reduce((a, c) => a + c.lit_holds_touched, 0);
+  $("agg").innerHTML = `
+    <div><b>${C.length}</b><small>videos · ${climbs} distinct climbs</small></div>
+    <div><b>${hrs.toFixed(2)} h</b><small>of motion</small></div>
+    <div><b>${Math.min(...ang)}–${Math.max(...ang)}°</b><small>board angles · V${Math.min(...vs)}–V${Math.max(...vs)}</small></div>
+    <div><b>${C.filter((c) => c.quality === "good").length} good</b><small>quality tier (fair ${C.filter((c) => c.quality === "fair").length} · low ${C.filter((c) => c.quality === "low").length})</small></div>
+    <div><b>${touched}/${lit}</b><small>lit holds touched</small></div>
+    <div><b>${C.filter((c) => c.source_platform === "youtube").length} / ${C.filter((c) => c.source_platform === "instagram").length}</b><small>YouTube / Instagram</small></div>`;
+}
+function renderList() {
+  const rows = S.clips.filter((c) => (S.q === "all" || c.quality === S.q) &&
+    (!S.query || `${c.climb_name} ${c.source_uploader} ${c.id}`.toLowerCase().includes(S.query)));
+  $("count").textContent = `${rows.length} / ${S.clips.length}`;
+  $("clips").innerHTML = rows.map((c) => `
+    <button class="clip" data-id="${esc(c.id)}" aria-current="${S.clip && S.clip.id === c.id}">
+      <span class="nm">${esc(c.climb_name || "unnamed")}</span><span class="gr">${c.climb_grade ? "V" + vnum(c.climb_grade) + " · " : ""}${c.climb_angle_deg}°</span>
+      <span class="mt">${qChip(c)}<span>${c.lit_holds_touched}/${c.lit_holds} holds</span><span>${Math.round(c.frames / c.fps)} s</span><span>${c.source_platform === "youtube" ? "YT" : "IG"} · ${esc(c.source_uploader || "")}</span></span>
+    </button>`).join("");
+}
+$("clips").addEventListener("click", (e) => {
+  const b = e.target.closest(".clip"); if (!b) return;
+  markCurrent(b.dataset.id);
+  if (window.matchMedia("(max-width: 900px)").matches) $("stage").scrollIntoView({ behavior: "smooth", block: "start" });
+  loadClip(b.dataset.id).catch(fail);
+});
+document.querySelectorAll("[data-q]").forEach((b) => b.addEventListener("click", () => {
+  S.q = b.dataset.q; document.querySelectorAll("[data-q]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderList();
+}));
+$("search").addEventListener("input", (e) => { S.query = e.target.value.trim().toLowerCase(); renderList(); });
+function markCurrent(id) { document.querySelectorAll(".clip").forEach((b) => b.setAttribute("aria-current", String(b.dataset.id === id))); }
+function renderDetail() {
+  const c = S.clip, m = data.meta;
+  const seq = m.sequence.map((s) => `${s.letter}<sub style="color:${EFF[s.effector]}">${s.effector === "left_hand" ? "L" : "R"}</sub>`).join(" → ");
+  const sup = c.g1.support;
+  $("detail").innerHTML = `
+    <div><h3>${esc(c.climb_name || "unnamed")}</h3><div class="sub">${c.climb_grade || "no grade"} · ${c.climb_angle_deg}° · ${(c.frames / c.fps).toFixed(1)} s · ${c.frames} frames @ ${Math.round(c.fps)} fps ·
+      <a href="${esc(c.source_url)}" target="_blank" rel="noopener">${c.source_platform === "youtube" ? "YouTube" : "Instagram"} · ${esc(c.source_uploader || "")}</a></div></div>
+    <div class="grp"><h4>Hand sequence (board letters, bottom to top)</h4><div class="seq">${seq || "—"}</div></div>
+    <div class="grp"><h4>Quality</h4><dl>
+      <dt>Tier</dt><dd>${qChip(c)}</dd>
+      <dt>Human score / G1 score</dt><dd>${fmt(c.score_human, 2)} / ${fmt(c.score_g1, 2)}</dd>
+      <dt>Lit holds touched</dt><dd>${c.lit_holds_touched}/${c.lit_holds}</dd>
+      <dt>2D reprojection error (of image size)</dt><dd>${fmt(100 * c.reproj_frac, 2)}%</dd></dl></div>
+    <div class="grp"><h4>G1 retarget</h4><dl>
+      <dt>Wall scale</dt><dd>×${fmt(c.g1.scale, 2)}</dd>
+      <dt>Contacts within 3 cm of own hold</dt><dd>${fmt(100 * c.g1_at_hold, 0)}% (worst limb)</dd>
+      <dt>Frames penetrating &gt;2 cm</dt><dd>${fmt(100 * c.g1_pen_gt2cm, 1)}% (max ${fmt(c.g1.metrics.pen_max_cm, 1)} cm)</dd>
+      <dt>Self-collision frames &gt;1 cm</dt><dd>${c.g1.metrics.selfcol_frames_gt1cm}</dd>
+      <dt>Support feasibility</dt><dd>${c.g1_support_pass ? "pass" : "fail"}${sup && sup.residual_force_bw_median != null ? " · residual force " + fmt(100 * sup.residual_force_bw_median, 1) + "% body weight" : ""}</dd></dl></div>
+    <div class="grp"><h4>Kilter climb</h4><dl>
+      <dt>Community grade (at this angle)</dt><dd>${c.climb_grade || "—"}</dd>
+      <dt>Ascents</dt><dd>${c.climb_ascents != null ? c.climb_ascents.toLocaleString() : "—"}</dd>
+      <dt>Climb uuid</dt><dd style="font-size:11px">${esc(c.climb_uuid || "—")}</dd></dl></div>`;
+}
+
+// ---------- controls ----------
+$("m-climber").onclick = () => { S.mode = "climber"; applyMode(); setView(S.view); };
+$("m-g1").onclick = () => { S.mode = "g1"; applyMode(); setView(S.view); };
+$("m-both").onclick = () => { S.mode = "both"; applyMode(); setView(S.view === "video" ? "orbit" : S.view); };
+$("v-video").onclick = () => setView("video");
+$("v-orbit").onclick = () => setView("orbit");
+$("v-side").onclick = () => setView("side");
+$("o-labels").onclick = () => { S.labels = !S.labels; $("o-labels").setAttribute("aria-pressed", String(S.labels)); applyMode(); };
+$("o-pip").onclick = () => { S.pip = !S.pip; $("o-pip").setAttribute("aria-pressed", String(S.pip)); $("pip").hidden = !S.pip; };
+$("play").onclick = () => {
+  S.playing = !S.playing;
+  $("play").textContent = S.playing ? "Pause" : "Play";
+  const v = $("vid");
+  if (S.playing) v.play().catch(() => {}); else v.pause();
+};
+document.querySelectorAll("[data-speed]").forEach((b) => b.addEventListener("click", () => {
+  S.speed = Number(b.dataset.speed);
+  $("vid").playbackRate = S.speed;
+  document.querySelectorAll("[data-speed]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+}));
+
+function resize() {
+  const st = $("stage");
+  const w = st.clientWidth, h = st.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / Math.max(h, 1);
+  camera.updateProjectionMatrix();
+  if (data && S.view === "video") setView("video");
+  drawTimeline();
+}
+new ResizeObserver(resize).observe($("stage"));
+
+// ---------- loop ----------
+let last = performance.now(), lastDrawn = -1;
+function tick(now) {
+  requestAnimationFrame(tick);
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  if (data) {
+    const v = $("vid"), T = data.meta.frames, fps = data.meta.fps;
+    const videoOk = S.pip && v.readyState >= 2 && !v.error;
+    if (S.playing && !dragging) {
+      if (videoOk && !v.paused) S.clockT = v.currentTime;
+      else { S.clockT += dt * S.speed; if (S.clockT * fps >= T) S.clockT = 0; }
+      S.frame = Math.min(T - 1, Math.floor(S.clockT * fps));
+    }
+    poseHuman(S.frame);
+    poseRobot(S.frame / fps);
+    // LED rings: brighter while a hand or foot is on that hold
+    const active = new Set();
+    for (const c of data.meta.contacts) if (S.frame >= c.t0 && S.frame <= c.t1) active.add(c.hold);
+    const pulse = 0.5 + 0.5 * Math.sin(now / 160);
+    for (const r of rings) {
+      const on = active.has(r.id);
+      r.mat.opacity = on ? 1 : 0.72;
+      r.glowMat.opacity = on ? 0.45 + 0.35 * pulse : 0.16;
+    }
+    if (S.frame !== lastDrawn) { drawTimeline(); $("clock").textContent = (S.frame / fps).toFixed(1) + " s"; lastDrawn = S.frame; }
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+function fail(e) { $("loading").hidden = false; $("loading").textContent = "This climb could not be loaded (" + e.message + "). Try another one."; console.error(e); }
+
+(async function start() {
+  try {
+    S.clips = await getJSON("clips.json");
+    renderAgg();
+    renderList();
+    await loadShared();
+    const first = S.clips[0].id;
+    markCurrent(first);
+    resize();
+    requestAnimationFrame(tick);
+    await loadClip(first);
+  } catch (e) { fail(e); }
+})();
+</script>
+
+</body>
+</html>
