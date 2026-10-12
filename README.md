@@ -17,7 +17,8 @@ Live site: https://knightnemo.github.io/kilter-climb-real2sim/
 
 ## Files
 
-- `index.html`: the page (three.js r128).
+- `index.html`: the page (three.js r128): the promo video, then the viewer.
+- `promo.mp4`: the 66 s promo video (720p).
 - `clips.json`: one entry per clip with its metadata, scene and G1 descriptors.
 - `shared/`: the SMPL-X skinning rig and the G1 meshes.
 - `media/<id>/`: per clip

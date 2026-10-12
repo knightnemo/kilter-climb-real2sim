@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="103 Kilter Board climbing videos reconstructed into 4D scenes: calibrated board and holds, SMPL-X climber motion, contacts, and a Unitree G1 retarget.">
-<style>:root{box-sizing:border-box}body{margin:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Kilter Climb Real2Sim</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -35,7 +35,7 @@
 }
 html, body { height: 100%; }
 body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 14px; line-height: 1.45; }
-.app { height: 100%; box-sizing: border-box; padding-block: 12px; padding-inline: 16px; display: grid;
+.app { height: 100vh; height: 100dvh; box-sizing: border-box; padding-block: 12px; padding-inline: 16px; display: grid;
   grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: minmax(0, 1fr); gap: 14px; }
 .stagecol { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 10px; min-width: 0; min-height: 0; }
 .stage { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; min-height: 0; }
@@ -110,12 +110,26 @@ details.how p { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
   #tl { grid-column: 1 / -1; grid-row: 2; }
   .tright { justify-content: flex-end; }
 }
+.hero { padding-block: 20px 8px; padding-inline: 16px; display: grid; gap: 14px; justify-items: center; }
+.hero video { width: 100%; max-width: 1280px; aspect-ratio: 16 / 9; border-radius: 10px; border: 1px solid var(--line); background: #000; display: block; }
+.hero .cap { width: 100%; max-width: 1280px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline; justify-content: space-between; }
+.hero h2 { font: 700 26px/1.1 var(--display); margin: 0; letter-spacing: .01em; }
+.hero h2 span { color: var(--accent); }
+.hero nav { display: flex; flex-wrap: wrap; gap: 8px 16px; font: 500 13px var(--body); }
+.hero nav a { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
 
-<div class="app">
+<section class="hero" aria-label="Promo video">
+  <video src="promo.mp4" controls autoplay muted loop playsinline preload="metadata"></video>
+  <div class="cap">
+    <h2>KILTER CLIMB <span>REAL2SIM</span></h2>
+    <nav><a href="https://huggingface.co/datasets/knightnemo/kilter-climb-real2sim" target="_blank" rel="noopener">Dataset on Hugging Face</a><a href="#viewer">Explore the 103 climbs in 3D &darr;</a></nav>
+  </div>
+</section>
+<div class="app" id="viewer">
   <div class="stagecol">
     <div class="stage" id="stage">
       <canvas id="gl" aria-label="3D reconstruction of the climb"></canvas>
